@@ -150,6 +150,10 @@ $(CERTS_DIR)/%/CA.crt: # 📜 Generates a self-signed certification authority ce
 	$(call gen_cert,$@,$(@D),$(*F),true)
 
 $(CERTS_DIR)/%.crt: # 📜 Generates a self-signed certificate
+	if [[ "$(@D)" == "$(call path,$(CERTS_DIR))" ]]; then
+		$(call message,⚠️ ,$(bold)Invalid certificate directory $(yellow)$(@D)$(rs) $(bold)it must be a $(underline)subfolder$(rs))
+		exit 1
+	fi
 	CA="$(call path,$(or $(CA),$(AUTHORITY),$(subst $(@F),CA.crt,$@)))"
 	$(MAKE) "$${CA}"
 	$(call gen_cert,$@,$(@D),$(*F),false,$${CA})
