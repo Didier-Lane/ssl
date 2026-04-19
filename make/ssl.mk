@@ -1,4 +1,4 @@
-CERTS_DIR 			?= ~/.ssl
+SSL_DIR 			?= ~/.ssl
 HASH				:= sha512
 KEY_SIZE 			:= $(or $(BITS),$(B),4096)
 REQ_DAYS 			:= $(or $(DAYS),$(D),3650)
@@ -161,11 +161,11 @@ $(call message,📜,Displaying Certificate $(hl)$${CERTIFICATE}$(rs))
 openssl x509 -noout -text -in "$${CERTIFICATE}"
 endef
 
-$(CERTS_DIR)/%/CA.crt: # 📜 Generates a self-signed certification authority certificate
+$(SSL_DIR)/%/CA.crt: # 📜 Generates a self-signed certification authority certificate
 	$(call gen_cert,$@,$(@D),$(*F),true)
 
-$(CERTS_DIR)/%.crt: # 📜 Generates a self-signed certificate
-	if [[ "$(@D)" == "$(call path,$(CERTS_DIR))" ]]; then
+$(SSL_DIR)/%.crt: # 📜 Generates a self-signed certificate
+	if [[ "$(@D)" == "$(call path,$(SSL_DIR))" ]]; then
 		$(call message,⚠️ ,$(bold)Invalid certificate directory $(yellow)$(@D)$(rs) $(bold)it must be a $(underline)subfolder$(rs))
 		exit 1
 	fi
