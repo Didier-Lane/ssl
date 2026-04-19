@@ -1,28 +1,22 @@
 CERTS_DIR 			?= ~/.ssl
-AVAILABLE_SIZES		:= 256 384 512
-KEY_SIZE			?= $(or $(SIZE),384)
-CURVE				:= secp$(KEY_SIZE)r1
-HASH				:= SHA$(KEY_SIZE)
-DEFAULT_BITS 		?= $(or $(BITS),4096)
-REQ_DAYS 			?= $(or $(DAYS),3650)
-COUNTRY 			?= $(or $(CT),FR)
-STATE 				?= $(or $(ST),Paris)
-LOCALITY 			?= $(or $(LO),Paris)
-ORGANIZATION 		?= $(or $(OG),Local)
-ORGANIZATION_UNIT 	?= $(or $(OU),IT)
-
-ifeq (,$(filter $(KEY_SIZE),$(AVAILABLE_SIZES)))
-$(error Invalid key size '$(KEY_SIZE)', must be one of '$(AVAILABLE_SIZES)')
-endif
+HASH				:= sha512
+KEY_SIZE 			:= $(or $(BITS),$(B),4096)
+REQ_DAYS 			:= $(or $(DAYS),$(D),3650)
+COUNTRY 			:= $(or $(CT),$(C),FR)
+STATE 				:= $(or $(ST),$(S),Paris)
+LOCALITY 			:= $(or $(LO),$(L),Paris)
+ORGANIZATION 		:= $(or $(OG),$(O),Local)
+ORGANIZATION_UNIT 	:= $(or $(OU),$(U),IT)
 
 define gen_cert
 CERTIFICATE="$(1)"
 DIRECTORY="$(2)"
-COMMON_NAME="$(3)"
+COMMON_NAME="$(or $(COMMON_NAME),$(CNAME),$(CN),$(3))"
 KEY="$(subst .crt,.key,$(1))"
 CONFIG="$(subst .crt,.cnf,$(1))"
 REQUEST="$(subst .crt,.csr,$(1))"
 SERIAL="$(subst .crt,.srl,$(1))"
+KEY_AND_CERT="$(subst .crt,-key-and-crt.pem,$(1))"
 FULLCHAIN="$(subst .crt,.fullchain.crt,$(1))"
 IS_CA="$(4)"
 ALT_NAMES=($(foreach n,$(or $(SAN),$(ALT_NAMES)),'$(n)'))
@@ -30,25 +24,31 @@ CA_CERT="$(5)"
 CA_KEY="$$( echo "$${CA_CERT}" | sed 's/.crt/.key/' )"
 CA_SERIAL="$$( echo "$${CA_CERT}" | sed 's/.crt/.srl/' )"
 
-[[ "$${IS_CA}" == "true" ]] && title="Certification Authority" || title="Certificate"
+title="Certificate"
 
-echo "${bold}${underline}$${title}${reset}"
-echo "${bold}Common Name: 				${cyan}$${COMMON_NAME}${reset}"
-echo "${bold}Directory: 				${cyan}$${DIRECTORY}${reset}"
-echo "${bold}Configuration:				${cyan}$${CONFIG}${reset}"
-echo "${bold}Private Key:				${cyan}$${KEY}${reset}"
-echo "${bold}Signing Request:			${cyan}$${REQUEST}${reset}"
-echo "${bold}Certificate:				${cyan}$${CERTIFICATE}${reset}"
 if [[ "$${IS_CA}" == "true" ]]; then
-	echo "${bold}Serial:					${cyan}$${SERIAL}${reset}"
+	COMMON_NAME="$(or $(CA_COMMON_NAME),$(CA_NAME),$(CA_CN),$${COMMON_NAME})"
+	title="Certification Authority"
+fi
+
+echo "$(bold)$(underline)$${title}$(rs)"
+echo "Common Name: 				$(hl)$${COMMON_NAME}$(rs)"
+echo "Directory: 				$(hl)$${DIRECTORY}$(rs)"
+echo "Configuration:				$(hl)$${CONFIG}$(rs)"
+echo "Private Key:				$(hl)$${KEY}$(rs)"
+echo "Signing Request:			$(hl)$${REQUEST}$(rs)"
+echo "Certificate:				$(hl)$${CERTIFICATE}$(rs)"
+echo "Private Key and Certificate:		$(hl)$${KEY_AND_CERT}$(rs)"
+if [[ "$${IS_CA}" == "true" ]]; then
+	echo "Serial:					$(hl)$${SERIAL}$(rs)"
 else
-	echo "${bold}Fullchain Certificate:			${cyan}$${FULLCHAIN}${reset}"
+	echo "Fullchain Certificate:			$(hl)$${FULLCHAIN}$(rs)"
 	if [[ ! -z "$${ALT_NAMES}" ]]; then
-		echo "${bold}Subject Alt Names:			${cyan}$${ALT_NAMES}${reset}"
+		echo "Subject Alt Names:			$(hl)$${ALT_NAMES}$(rs)"
 	fi
-	echo "${bold}Certification Authority Certificate:	${cyan}$${CA_CERT}${reset}"
-	echo "${bold}Certification Authority Private Key:	${cyan}$${CA_KEY}${reset}"
-	echo "${bold}Certification Authority Serial:		${cyan}$${CA_SERIAL}${reset}"
+	echo "Certification Authority Certificate:	$(hl)$${CA_CERT}$(rs)"
+	echo "Certification Authority Private Key:	$(hl)$${CA_KEY}$(rs)"
+	echo "Certification Authority Serial:		$(hl)$${CA_SERIAL}$(rs)"
 fi
 
 [[ ! -z "$(or $(DRY),$(DRY_RUN))" ]] && exit 0
@@ -58,16 +58,11 @@ if [ ! -d "$${DIRECTORY}" ]; then
 	mkdir -p "$${DIRECTORY}"
 fi
 
-if [ ! -f "$${KEY}" ]; then
-	$(call message,📜,Creating Private Key $(hl)$${KEY}$(rs))
-	openssl ecparam -genkey -name "$(CURVE)" -out "$${KEY}"
-fi
-
 if [ ! -f "$${CONFIG}" ]; then
 	$(call message,📄,Creating Configuration File $(hl)$${CONFIG}$(rs))
 	cat <<-EOF > "$${CONFIG}"
 	[ req ]
-	default_bits       = $(DEFAULT_BITS)
+	default_bits       = $(KEY_SIZE)
 	prompt             = no
 	default_md         = $(HASH)
 	req_extensions     = v3_req
@@ -109,30 +104,37 @@ if [ ! -f "$${CONFIG}" ]; then
 			cat << EOF >> "$${CONFIG}"
 			subjectAltName = @alt_names
 			[ alt_names ]
-			$$(for i in {1..$${#DNS_NAMES[@]}}
-			do
-				echo DNS.$$i = $${DNS_NAMES[$$i]}
-			done)
-			$$(for i in {1..$${#IP_ADDRS[@]}}
-			do
-				echo IP.$$i = $${IP_ADDRS[$$i]}
-			done)
 			EOF
+			if [ "$${#DNS_NAMES[@]}" -gt 0 ]; then
+				for i in {1..$${#DNS_NAMES[@]}}; do
+					echo "DNS.$$i = $${DNS_NAMES[$$i]}" >> "$${CONFIG}"
+				done
+			fi
+			if [ "$${#IP_ADDRS[@]}" -gt 0 ]; then
+				for i in {1..$${#IP_ADDRS[@]}}; do
+					echo "IP.$$i = $${IP_ADDRS[$$i]}" >> "$${CONFIG}"
+				done
+			fi
 		fi
 	fi
 fi
 
+if [ ! -f "$${KEY}" ]; then
+	$(call message,📜,Creating Private Key $(hl)$${KEY}$(rs))
+	openssl genpkey -algorithm ed25519 -config "$${CONFIG}" -out "$${KEY}"
+fi
+
 if [ ! -f "$${REQUEST}" ]; then
 	$(call message,📜,Creating Signing Request $(hl)$${REQUEST}$(rs))
-	openssl req -new "-$(HASH)" -nodes -out "$${REQUEST}" -key "$${KEY}" -config "$${CONFIG}"
+	openssl req -new -nodes -key "$${KEY}" -config "$${CONFIG}" -out "$${REQUEST}"
 fi
 
 if [ ! -f "$${CERTIFICATE}" ]; then
 	$(call message,📜,Creating Certificate $(hl)$${CERTIFICATE}$(rs))
 	[[ "$${IS_CA}" == "true" ]] && params=(-signkey "$${KEY}") \
 		|| params=(-CA "$${CA_CERT}" -CAkey "$${CA_KEY}" -CAserial "$${CA_SERIAL}")
-	openssl x509 -req "-$(HASH)" -days "$(REQ_DAYS)" -in "$${REQUEST}" \
-		-extfile "$${CONFIG}" $${params[@]} -out "$${CERTIFICATE}"
+	openssl x509 -req -days "$(REQ_DAYS)" -in "$${REQUEST}" \
+		-extensions v3_req -extfile "$${CONFIG}" $${params[@]} -out "$${CERTIFICATE}"
 fi
 
 if [[ "$${IS_CA}" == "true" ]] && [[ ! -f "$${SERIAL}" ]]; then
@@ -144,6 +146,19 @@ if [[ "$${IS_CA}" == "false" ]] && [[ ! -f "$${FULLCHAIN}" ]]; then
 	$(call message,📜,Creating Fullchain Certificate $(hl)$${FULLCHAIN}$(rs))
 	cat "$${CERTIFICATE}" "$${CA_CERT}" > "$${FULLCHAIN}"
 fi
+
+if [ ! -f "$${KEY_AND_CERT}" ]; then
+	$(call message,📜,Creating Private Key and Certificate file $(hl)$${KEY_AND_CERT}$(rs))
+	cat "$${KEY}" "$${CERTIFICATE}" > "$${KEY_AND_CERT}"
+fi
+
+if [[ "$${IS_CA}" == "false" ]]; then
+	$(call message,🔍,Verifying CA $(hl)$${CA_CERT}$(rs) and certificate $(hl)$${CERTIFICATE}$(rs))
+	openssl verify -verbose -CAfile "$${CA_CERT}" "$${CERTIFICATE}"
+fi
+
+$(call message,📜,Displaying Certificate $(hl)$${CERTIFICATE}$(rs))
+openssl x509 -noout -text -in "$${CERTIFICATE}"
 endef
 
 $(CERTS_DIR)/%/CA.crt: # 📜 Generates a self-signed certification authority certificate
