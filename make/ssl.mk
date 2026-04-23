@@ -6,14 +6,6 @@ ifeq ($(filter $(ALGORITHM),$(TLS_ALGORITHMS)),)
 $(error Invalid ALGORITHM '$(ALGORITHM)' must be one of '$(TLS_ALGORITHMS)')
 endif
 
-HASH				!= echo "$(ALGORITHM)" | grep -Eo 'sha[0-9]+'
-
-ifeq ($(HASH),)
-override HASH		:= sha512
-endif
-
-CURVE				!= echo "$(ALGORITHM)" | grep -Eo 'secp[0-9]+r1'
-
 REQ_DAYS 			:= $(or $(DAYS),$(D),3650)
 COUNTRY 			:= $(or $(CT),$(C),FR)
 STATE 				:= $(or $(ST),$(S),Paris)
@@ -22,6 +14,8 @@ ORGANIZATION 		:= $(or $(OG),$(O),Local)
 ORGANIZATION_UNIT 	:= $(or $(OU),$(U),IT)
 
 define gen_cert
+HASH="$$( echo "$(ALGORITHM)" | grep -Eo 'sha[0-9]+' || echo sha512 )"
+CURVE="$$( echo "$(ALGORITHM)" | grep -Eo 'secp[0-9]+r1' || true )"
 CERTIFICATE="$(1)"
 DIRECTORY="$(2)"
 COMMON_NAME="$(or $(COMMON_NAME),$(CNAME),$(CN),$(3))"
@@ -78,7 +72,7 @@ if [ ! -f "$${CONFIG}" ]; then
 	[ req ]
 	default_bits       = 4096
 	prompt             = no
-	default_md         = $(HASH)
+	default_md         = $${HASH}
 	req_extensions     = v3_req
 	distinguished_name = dn
 	[ dn ]
@@ -141,7 +135,7 @@ if [ ! -f "$${KEY}" ]; then
 			-out "$${KEY}"
 	else
 		openssl ecparam -genkey \
-			-name "$(CURVE)" \
+			-name "$${CURVE}" \
 			-out "$${KEY}"
 	fi
 fi
@@ -149,7 +143,7 @@ fi
 if [ ! -f "$${REQUEST}" ]; then
 	$(call message,📜,Creating Signing Request $(hl)$${REQUEST}$(rs))
 	openssl req -new \
-		"-$(HASH)" \
+		"-$${HASH}" \
 		-key "$${KEY}" \
 		-config "$${CONFIG}" \
 		-out "$${REQUEST}"
@@ -163,7 +157,7 @@ if [ ! -f "$${CERTIFICATE}" ]; then
 		params=(-CA "$${CA_CERT}" -CAkey "$${CA_KEY}" -CAserial "$${CA_SERIAL}")
 	fi
 	openssl x509 -req \
-		"-$(HASH)" \
+		"-$${HASH}" \
 		-days "$(REQ_DAYS)" \
 		-in "$${REQUEST}" \
 		-extensions v3_req \
