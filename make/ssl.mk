@@ -1,6 +1,19 @@
 SSL_DIR 			?= ~/.ssl
-HASH				:= sha512
-KEY_SIZE 			:= $(or $(BITS),$(B),4096)
+TLS_ALGORITHMS		:= ecdsa_secp256r1_sha256 ecdsa_secp384r1_sha384 ecdsa_secp521r1_sha512 ed25519
+ALGORITHM			:= $(or $(ALG),$(A),ecdsa_secp384r1_sha384)
+
+ifeq ($(filter $(ALGORITHM),$(TLS_ALGORITHMS)),)
+$(error Invalid ALGORITHM '$(ALGORITHM)' must be one of '$(TLS_ALGORITHMS)')
+endif
+
+HASH				!= echo "$(ALGORITHM)" | grep -Eo 'sha[0-9]+'
+
+ifeq ($(HASH),)
+override HASH		:= sha512
+endif
+
+CURVE				!= echo "$(ALGORITHM)" | grep -Eo 'secp[0-9]+r1'
+
 REQ_DAYS 			:= $(or $(DAYS),$(D),3650)
 COUNTRY 			:= $(or $(CT),$(C),FR)
 STATE 				:= $(or $(ST),$(S),Paris)
@@ -32,6 +45,7 @@ if [[ "$${IS_CA}" == "true" ]]; then
 fi
 
 echo "$(bold)$(underline)$${title}$(rs)"
+echo "Signature Algorithm: 			$(hl)$(ALGORITHM)$(rs)"
 echo "Common Name: 				$(hl)$${COMMON_NAME}$(rs)"
 echo "Directory: 				$(hl)$${DIRECTORY}$(rs)"
 echo "Configuration:				$(hl)$${CONFIG}$(rs)"
@@ -62,7 +76,7 @@ if [ ! -f "$${CONFIG}" ]; then
 	$(call message,📄,Creating Configuration File $(hl)$${CONFIG}$(rs))
 	cat <<-EOF > "$${CONFIG}"
 	[ req ]
-	default_bits       = $(KEY_SIZE)
+	default_bits       = 4096
 	prompt             = no
 	default_md         = $(HASH)
 	req_extensions     = v3_req
@@ -80,7 +94,7 @@ if [ ! -f "$${CONFIG}" ]; then
 
 	if [[ "$${IS_CA}" == "true" ]]; then
 		cat <<EOF >> "$${CONFIG}"
-		basicConstraints = critical,CA:TRUE
+		basicConstraints = critical, CA:TRUE
 		keyUsage = critical, digitalSignature, cRLSign, keyCertSign
 		EOF
 	else
@@ -121,20 +135,41 @@ fi
 
 if [ ! -f "$${KEY}" ]; then
 	$(call message,📜,Creating Private Key $(hl)$${KEY}$(rs))
-	openssl genpkey -algorithm ed25519 -config "$${CONFIG}" -out "$${KEY}"
+	if [[ "$(ALGORITHM)" == "ed25519" ]]; then
+		openssl genpkey \
+			-algorithm ED25519 \
+			-out "$${KEY}"
+	else
+		openssl ecparam -genkey \
+			-name "$(CURVE)" \
+			-out "$${KEY}"
+	fi
 fi
 
 if [ ! -f "$${REQUEST}" ]; then
 	$(call message,📜,Creating Signing Request $(hl)$${REQUEST}$(rs))
-	openssl req -new -nodes -key "$${KEY}" -config "$${CONFIG}" -out "$${REQUEST}"
+	openssl req -new \
+		"-$(HASH)" \
+		-key "$${KEY}" \
+		-config "$${CONFIG}" \
+		-out "$${REQUEST}"
 fi
 
 if [ ! -f "$${CERTIFICATE}" ]; then
 	$(call message,📜,Creating Certificate $(hl)$${CERTIFICATE}$(rs))
-	[[ "$${IS_CA}" == "true" ]] && params=(-signkey "$${KEY}") \
-		|| params=(-CA "$${CA_CERT}" -CAkey "$${CA_KEY}" -CAserial "$${CA_SERIAL}")
-	openssl x509 -req -days "$(REQ_DAYS)" -in "$${REQUEST}" \
-		-extensions v3_req -extfile "$${CONFIG}" $${params[@]} -out "$${CERTIFICATE}"
+	if [[ "$${IS_CA}" == "true" ]]; then
+		params=(-signkey "$${KEY}")
+	else
+		params=(-CA "$${CA_CERT}" -CAkey "$${CA_KEY}" -CAserial "$${CA_SERIAL}")
+	fi
+	openssl x509 -req \
+		"-$(HASH)" \
+		-days "$(REQ_DAYS)" \
+		-in "$${REQUEST}" \
+		-extensions v3_req \
+		-extfile "$${CONFIG}" \
+		$${params[@]} \
+		-out "$${CERTIFICATE}"
 fi
 
 if [[ "$${IS_CA}" == "true" ]] && [[ ! -f "$${SERIAL}" ]]; then

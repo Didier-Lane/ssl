@@ -1,6 +1,6 @@
 # SSL
 
-Generates self-signed [Ed25519] certificates with [openssl]
+Generates self-signed [ECDSA] certificates with [openssl]
 
 ## Trust a self-signed CA certificate
 
@@ -25,4 +25,16 @@ sudo update-ca-trust
 </details>
 
 [openssl]: https://www.openssl.org/
-[Ed25519]: https://ed25519.cr.yp.to/
+[ECDSA]: https://www.rfc-editor.org/rfc/rfc8446#section-1
+
+TODO trusted ?
+openssl x509 -in ~/.ssl/local.io/nginx/nginx.crt -trustout -out test.crt
+
+### Removing
+
+```shell
+sudo trust list | grep -C 5 Didier
+
+sudo trust anchor --remove "pkcs11:id=..;type=cert"
+sudo update-ca-trust
+```
