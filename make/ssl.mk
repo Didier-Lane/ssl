@@ -1,5 +1,5 @@
 SSL_DIR 			?= ~/.ssl
-TLS_ALGORITHMS		:= ecdsa_secp256r1_sha256 ecdsa_secp384r1_sha384 ecdsa_secp521r1_sha512 ed25519
+TLS_ALGORITHMS		:= ecdsa_secp256r1_sha256 ecdsa_secp384r1_sha384
 ALGORITHM			:= $(or $(ALG),$(A),ecdsa_secp384r1_sha384)
 
 ifeq ($(filter $(ALGORITHM),$(TLS_ALGORITHMS)),)
@@ -14,8 +14,8 @@ ORGANIZATION 		:= $(or $(OG),$(O),Local)
 ORGANIZATION_UNIT 	:= $(or $(OU),$(U),IT)
 
 define gen_cert
-HASH="$$( echo "$(ALGORITHM)" | grep -Eo 'sha[0-9]+' || echo sha512 )"
-CURVE="$$( echo "$(ALGORITHM)" | grep -Eo 'secp[0-9]+r1' || true )"
+HASH="$$( echo "$(ALGORITHM)" | grep -Eo 'sha[0-9]+' )"
+CURVE="$$( echo "$(ALGORITHM)" | grep -Eo 'secp[0-9]+r1' )"
 CERTIFICATE="$(1)"
 DIRECTORY="$(2)"
 COMMON_NAME="$(or $(COMMON_NAME),$(CNAME),$(CN),$(3))"
@@ -39,8 +39,8 @@ if [[ "$${IS_CA}" == "true" ]]; then
 fi
 
 echo "$(bold)$(underline)$${title}$(rs)"
-echo "Signature Algorithm: 			$(hl)$(ALGORITHM)$(rs)"
 echo "Common Name: 				$(hl)$${COMMON_NAME}$(rs)"
+echo "Signature Algorithm: 			$(hl)$(ALGORITHM)$(rs)"
 echo "Directory: 				$(hl)$${DIRECTORY}$(rs)"
 echo "Configuration:				$(hl)$${CONFIG}$(rs)"
 echo "Private Key:				$(hl)$${KEY}$(rs)"
@@ -129,15 +129,7 @@ fi
 
 if [ ! -f "$${KEY}" ]; then
 	$(call message,📜,Creating Private Key $(hl)$${KEY}$(rs))
-	if [[ "$(ALGORITHM)" == "ed25519" ]]; then
-		openssl genpkey \
-			-algorithm ED25519 \
-			-out "$${KEY}"
-	else
-		openssl ecparam -genkey \
-			-name "$${CURVE}" \
-			-out "$${KEY}"
-	fi
+	openssl ecparam -genkey -name "$${CURVE}" -out "$${KEY}"
 fi
 
 if [ ! -f "$${REQUEST}" ]; then
