@@ -6,12 +6,12 @@ ifeq ($(filter $(ALGORITHM),$(TLS_ALGORITHMS)),)
 $(error Invalid ALGORITHM '$(ALGORITHM)' must be one of '$(TLS_ALGORITHMS)')
 endif
 
-REQ_DAYS 			:= $(or $(DAYS),$(D),3650)
-COUNTRY 			:= $(or $(CT),$(C),FR)
-STATE 				:= $(or $(ST),$(S),Paris)
-LOCALITY 			:= $(or $(LO),$(L),Paris)
-ORGANIZATION 		:= $(or $(OG),$(O),Local)
-ORGANIZATION_UNIT 	:= $(or $(OU),$(U),IT)
+REQ_DAYS 			?= $(or $(DAYS),$(D),3650)
+COUNTRY 			?= $(or $(CT),$(C),FR)
+STATE 				?= $(or $(ST),$(S),Paris)
+LOCALITY 			?= $(or $(LO),$(L),Paris)
+ORGANIZATION 		?= $(or $(OG),$(O),Local)
+ORGANIZATION_UNIT 	?= $(or $(OU),$(U),IT)
 
 define gen_cert
 HASH="$$( echo "$(ALGORITHM)" | grep -Eo 'sha[0-9]+' )"
@@ -26,7 +26,7 @@ SERIAL="$(subst .crt,.srl,$(1))"
 KEY_AND_CERT="$(subst .crt,-key-and-crt.pem,$(1))"
 FULLCHAIN="$(subst .crt,.fullchain.crt,$(1))"
 IS_CA="$(4)"
-ALT_NAMES=($(foreach n,$(or $(SAN),$(ALT_NAMES)),'$(n)'))
+ALT_NAMES=($(foreach n,$(or $(SUBJECT_ALT_NAMES),$(ALT_NAMES),$(SAN)),'$(n)'))
 CA_CERT="$(5)"
 CA_KEY="$$( echo "$${CA_CERT}" | sed 's/.crt/.key/' )"
 CA_SERIAL="$$( echo "$${CA_CERT}" | sed 's/.crt/.srl/' )"
@@ -190,6 +190,6 @@ $(SSL_DIR)/%.crt: # 📜 Generates a self-signed certificate
 		$(call message,⚠️ ,$(bold)Invalid certificate directory $(yellow)$(@D)$(rs) $(bold)it must be a $(underline)subfolder$(rs))
 		exit 1
 	fi
-	CA="$(call path,$(or $(CA),$(AUTHORITY),$(subst $(@F),CA.crt,$@)))"
+	CA="$(call path,$(or $(CERT_AUTHORITY),$(AUTHORITY),$(CA),$(subst $(@F),CA.crt,$@)))"
 	$(MAKE) "$${CA}"
 	$(call gen_cert,$@,$(@D),$(*F),false,$${CA})
