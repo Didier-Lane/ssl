@@ -69,6 +69,62 @@ OS					!= uname -s | tr "[:upper:]" "[:lower:]"
 endif
 ```
 
+### Extra environment files
+
+Extra environment files follows the naming pattern `.env.*` ( e.g. : `.env.local`, `.env.override` ) and are automatically included **after** the [`.env`] file.
+
+They are **not deleted automatically** instead of the [`.env`] file which is strongly coupled to the project lifecycle, thus making them useful for persisting user-defined variables.
+
+#### Example usage of an extra environment file
+
+>Given the makefile `./make/secret.mk` declaring `MY_SECRET` with the default value `secret123!` and a recipe to display its value
+
+```shell
+# ./make/secret.mk
+MY_SECRET	?= secret123!
+
+.PHONY: secret
+secret:
+	echo "MY_SECRET=$(MY_SECRET)"
+```
+
+>Which outputs the following line in the [`.env`] file upon invoking make
+
+```shell
+# ./.env
+MY_SECRET=secret123!
+```
+
+>Adding the extra environment file `.env.secret` with the following content
+
+```shell
+# ./.env.secret
+MY_SECRET=V8ryS3cr3t!
+```
+
+>Outputs the following when invoking the recipe
+
+```shell
+$ make secret
+MY_SECRET=V8ryS3cr3t!
+```
+
+>[!NOTE]
+>In the above example the variable `MY_SECRET` will be persisted in both the [`.env`] and `.env.secret` files.
+
+>To avoid that behavior, especially when dealing with secrets, make the variable mandatory without a default value.
+
+```shell
+# ./make/secret.mk
+ifndef MY_SECRET
+$(error Variable MY_SECRET is undefined)
+endif
+
+.PHONY: secret
+secret:
+	echo "MY_SECRET=$(MY_SECRET)"
+```
+
 [`.env`]: #the-env-file
 [persisted environment variables]: #persisted-environment-variables
 [dependencies]: ./deps.md
